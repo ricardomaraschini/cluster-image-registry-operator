@@ -87,7 +87,12 @@ func (c *Controller) syncStatus(cr *imageregistryv1.Config, deploy *appsapi.Depl
 		Message: "",
 		Reason:  "",
 	}
-	if deploy == nil {
+
+	if removed {
+		operatorAvailable.Status = operatorapiv1.ConditionTrue
+		operatorAvailable.Message = "The registry is removed"
+		operatorAvailable.Reason = "Removed"
+	} else if deploy == nil {
 		if e, ok := applyError.(permanentError); ok {
 			operatorAvailable.Message = applyError.Error()
 			operatorAvailable.Reason = e.Reason

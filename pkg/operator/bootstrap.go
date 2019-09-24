@@ -8,17 +8,22 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog"
 
+	configapiv1 "github.com/openshift/api/config/v1"
 	operatorapi "github.com/openshift/api/operator/v1"
 
 	imageregistryv1 "github.com/openshift/cluster-image-registry-operator/pkg/apis/imageregistry/v1"
 	regopset "github.com/openshift/cluster-image-registry-operator/pkg/generated/clientset/versioned/typed/imageregistry/v1"
 	"github.com/openshift/cluster-image-registry-operator/pkg/parameters"
+	"github.com/openshift/cluster-image-registry-operator/pkg/storage/util"
 )
 
 // randomSecretSize is the number of random bytes to generate
 // for the http secret
 const randomSecretSize = 64
 
+// Bootstrap registers this operator with OpenShift by creating appropriate
+// ClusterOperator custom resource. This function also creates the initial
+// configuration for the Image Registry.
 func (c *Controller) Bootstrap() error {
 	cr, err := c.listers.RegistryConfigs.Get(imageregistryv1.ImageRegistryResourceName)
 	if err != nil && !errors.IsNotFound(err) {
@@ -40,6 +45,17 @@ func (c *Controller) Bootstrap() error {
 		return fmt.Errorf("could not generate random bytes for HTTP secret: %s", err)
 	}
 
+	infra, err := util.GetInfrastructure(c.listers)
+	if err != nil {
+		return fmt.Errorf("could not get infra configuration")
+	}
+
+	// We bootstrap ourselves as Removed if we are running on BareMetal.
+	mgmtState := operatorapi.Managed
+	if infra.Status.PlatformStatus.Type == configapiv1.BareMetalPlatformType {
+		mgmtState = operatorapi.Removed
+	}
+
 	cr = &imageregistryv1.Config{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:       imageregistryv1.ImageRegistryResourceName,
@@ -47,7 +63,7 @@ func (c *Controller) Bootstrap() error {
 			Finalizers: []string{parameters.ImageRegistryOperatorResourceFinalizer},
 		},
 		Spec: imageregistryv1.ImageRegistrySpec{
-			ManagementState: operatorapi.Managed,
+			ManagementState: mgmtState,
 			LogLevel:        2,
 			Storage:         imageregistryv1.ImageRegistryConfigStorage{},
 			Replicas:        1,
