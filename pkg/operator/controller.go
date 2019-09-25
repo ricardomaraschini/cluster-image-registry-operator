@@ -8,7 +8,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	kmeta "k8s.io/apimachinery/pkg/api/meta"
 	metaapi "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/util/wait"
 	kubeinformers "k8s.io/client-go/informers"
 	kubeset "k8s.io/client-go/kubernetes"
 	appsset "k8s.io/client-go/kubernetes/typed/apps/v1"
@@ -484,7 +483,8 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		}
 	}
 
-	go wait.Until(c.eventProcessor, time.Second, stopCh)
+	go c.eventProcessor()
+	//go wait.Until(c.eventProcessor, time.Second, stopCh)
 
 	klog.Info("started events processor")
 	<-stopCh
