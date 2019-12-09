@@ -14,11 +14,11 @@ import (
 	configv1 "github.com/openshift/api/config/v1"
 	routev1 "github.com/openshift/api/route/v1"
 	configv1listers "github.com/openshift/client-go/config/listers/config/v1"
+	regopv1listers "github.com/openshift/client-go/imageregistry/listers/imageregistry/v1"
 	routev1listers "github.com/openshift/client-go/route/listers/route/v1"
 
-	regopv1 "github.com/openshift/cluster-image-registry-operator/pkg/apis/imageregistry/v1"
+	regopv1 "github.com/openshift/api/imageregistry/v1"
 	"github.com/openshift/cluster-image-registry-operator/pkg/client"
-	regopv1listers "github.com/openshift/cluster-image-registry-operator/pkg/generated/listers/imageregistry/v1"
 )
 
 // FixturesBuilder helps create an in-memory version of client.Listers.
