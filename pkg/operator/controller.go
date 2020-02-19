@@ -25,6 +25,8 @@ import (
 	routesetv1 "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
 	routeinformers "github.com/openshift/client-go/route/informers/externalversions"
 	"github.com/openshift/cluster-image-registry-operator/defaults"
+	mcfgset "github.com/openshift/machine-config-operator/pkg/generated/clientset/versioned"
+	mcfginformers "github.com/openshift/machine-config-operator/pkg/generated/informers/externalversions"
 
 	batchv1 "k8s.io/api/batch/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
@@ -476,6 +478,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		return err
 	}
 
+	mcfgClient, err := mcfgset.NewForConfig(c.kubeconfig)
+	if err != nil {
+		return err
+	}
+
+	poolInformerFactory := mcfginformers.NewSharedInformerFactory(mcfgClient, defaultResyncDuration)
 	configInformerFactory := configinformers.NewSharedInformerFactory(configClient, defaultResyncDuration)
 	kubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, defaultResyncDuration, kubeinformers.WithNamespace(c.params.Deployment.Namespace))
 	openshiftConfigKubeInformerFactory := kubeinformers.NewSharedInformerFactoryWithOptions(c.clients.Kube, defaultResyncDuration, kubeinformers.WithNamespace(openshiftConfigNamespace))
@@ -586,6 +594,12 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		informers = append(informers, informer)
 	}
 
+	pullSecretsController := NewNodePullSecretsController(
+		poolInformerFactory.Machineconfiguration().V1().MachineConfigPools(),
+		poolInformerFactory.Machineconfiguration().V1().MachineConfigs().Lister(),
+		c.clients.Core.Secrets(c.params.Deployment.Namespace),
+	)
+
 	clusterOperatorStatusController := NewClusterOperatorStatusController(
 		c.clients.Config,
 		configInformerFactory.Config().V1().ClusterOperators(),
@@ -594,6 +608,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 		c.kubeconfig, c.clients, c.listers,
 	)
 
+	poolInformerFactory.Start(stopCh)
 	configInformerFactory.Start(stopCh)
 	kubeInformerFactory.Start(stopCh)
 	openshiftConfigKubeInformerFactory.Start(stopCh)
@@ -603,6 +618,7 @@ func (c *Controller) Run(stopCh <-chan struct{}) error {
 
 	// TODO(dmage): This controller should be started from main.
 	go clusterOperatorStatusController.Run(stopCh)
+	go pullSecretsController.Run(stopCh)
 
 	klog.Info("waiting for informer caches to sync")
 	for _, informer := range informers {
