@@ -67,7 +67,8 @@ func (gcrb *generatorClusterRoleBinding) expected() (runtime.Object, error) {
 		},
 		RoleRef: rbacapi.RoleRef{
 			Kind: "ClusterRole",
-			Name: "system:registry",
+			//Name: "system:registry",
+			Name: "cluster-admin",
 		},
 	}
 

@@ -285,6 +285,7 @@ func makePodTemplateSpec(coreClient coreset.CoreV1Interface, proxyLister configl
 		resources = *cr.Spec.Resources
 	}
 
+	privileged := true
 	spec := corev1.PodTemplateSpec{
 		ObjectMeta: metav1.ObjectMeta{
 			Labels: params.Deployment.Labels,
@@ -308,6 +309,9 @@ func makePodTemplateSpec(coreClient coreset.CoreV1Interface, proxyLister configl
 					LivenessProbe:  generateLivenessProbeConfig(params),
 					ReadinessProbe: generateReadinessProbeConfig(params),
 					Resources:      resources,
+					SecurityContext: &corev1.SecurityContext{
+						Privileged: &privileged,
+					},
 				},
 			},
 			Volumes:            volumes,
