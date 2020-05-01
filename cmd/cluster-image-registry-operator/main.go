@@ -54,6 +54,8 @@ func runOperator(cmd *cobra.Command, args []string) {
 		_ = logstderr.Value.Set("true")
 	}
 
+	operator.LogLevelSetter = klogFlags.Lookup("v").Value.Set
+
 	printVersion()
 
 	rand.Seed(time.Now().UnixNano())

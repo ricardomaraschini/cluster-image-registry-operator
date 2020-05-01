@@ -36,6 +36,10 @@ import (
 	"github.com/openshift/cluster-image-registry-operator/pkg/storage"
 )
 
+var LogLevelSetter = func(string) error {
+	return nil
+}
+
 const (
 	kubeSystemNamespace   = "kube-system"
 	workqueueKey          = "changes"
@@ -240,6 +244,10 @@ func (c *Controller) sync() error {
 	}
 	cr = cr.DeepCopy() // we don't want to change the cached version
 	prevCR := cr.DeepCopy()
+
+	if err := LogLevelSetter(fmt.Sprintf("%d", cr.Spec.LogLevel)); err != nil {
+		klog.Errorf("unable to set log level: %v", err)
+	}
 
 	if cr.ObjectMeta.DeletionTimestamp != nil {
 		err = c.finalizeResources(cr)
