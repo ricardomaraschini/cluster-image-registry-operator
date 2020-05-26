@@ -2,6 +2,8 @@ module github.com/openshift/cluster-image-registry-operator
 
 go 1.13
 
+replace github.com/openshift/api => github.com/ricardomaraschini/api v0.0.0-20200526105238-c0cce270b446
+
 require (
 	cloud.google.com/go v0.40.0
 	github.com/Azure/azure-pipeline-go v0.2.2 // indirect
@@ -60,10 +62,10 @@ require (
 	google.golang.org/genproto v0.0.0-20191206224255-0243a4be9c8f // indirect
 	gopkg.in/check.v1 v1.0.0-20190902080502-41f04d3bba15 // indirect
 	gopkg.in/yaml.v2 v2.2.8
-	k8s.io/api v0.18.2
-	k8s.io/apimachinery v0.18.2
+	k8s.io/api v0.18.3
+	k8s.io/apimachinery v0.18.3
 	k8s.io/client-go v0.18.2
-	k8s.io/code-generator v0.18.2
+	k8s.io/code-generator v0.18.3
 	k8s.io/klog v1.0.0
 	sigs.k8s.io/controller-tools v0.2.1 // indirect
 )
