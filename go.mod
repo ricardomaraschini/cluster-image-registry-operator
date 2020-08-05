@@ -57,3 +57,5 @@ require (
 	k8s.io/klog v1.0.0
 	sigs.k8s.io/controller-tools v0.2.1 // indirect
 )
+
+replace github.com/openshift/api => github.com/ricardomaraschini/api v0.0.0-20200805144812-bf1ad5d3844c

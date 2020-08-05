@@ -16,6 +16,14 @@ type ConfigList struct {
 	Items           []Config `json:"items"`
 }
 
+const (
+	// StorageManagementStateManaged indicates the operator is managing the underlying storage.
+	StorageManagementStateManaged = "Managed"
+	// StorageManagementStateUnmanaged indicates the operator is not managing the underlying
+	// storage.
+	StorageManagementStateUnmanaged = "Unmanaged"
+)
+
 // +genclient
 // +genclient:nonNamespaced
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
@@ -90,6 +98,10 @@ type ImageRegistrySpec struct {
 	// affinity is a group of node affinity scheduling rules for the image registry pod(s).
 	// +optional
 	Affinity *corev1.Affinity `json:"affinity,omitempty"`
+	// storageManagementState indicates if the operator manages the underlying storage unit.
+	// +optional
+	// +kubebuilder:validation:Pattern=`^(Managed|Unmanaged)$`
+	StorageManagementState string `json:"storageManagementState"`
 }
 
 // ImageRegistryStatus reports image registry operational status.

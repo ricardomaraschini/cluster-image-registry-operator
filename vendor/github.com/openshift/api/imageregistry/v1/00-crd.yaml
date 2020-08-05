@@ -935,6 +935,11 @@ spec:
                       description: tenant defines Openstack tenant id to be used by
                         registry.
                       type: string
+            storageManagementState:
+              description: storageManagementState indicates if the operator manages
+                the underlying storage unit.
+              type: string
+              pattern: ^(Managed|Unmanaged)$
             tolerations:
               description: tolerations defines the tolerations for the registry pod.
               type: array
