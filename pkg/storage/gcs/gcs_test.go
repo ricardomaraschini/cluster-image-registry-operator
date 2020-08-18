@@ -127,13 +127,13 @@ func TestStorageManagementState(t *testing.T) {
 			responseBodies: []string{`{"error":{"code":404}}`, `{}`},
 		},
 		{
-			name: "unexpected error when checking for container",
+			name: "unexpected error checking for container",
 			err:  "got HTTP response code 424 with body",
 			config: &imageregistryv1.Config{
 				Spec: imageregistryv1.ImageRegistrySpec{
 					Storage: imageregistryv1.ImageRegistryConfigStorage{
 						GCS: &imageregistryv1.ImageRegistryConfigStorageGCS{
-							Bucket: "abucket",
+							Bucket: "another-bucket",
 						},
 					},
 				},
@@ -144,7 +144,7 @@ func TestStorageManagementState(t *testing.T) {
 			responseBodies: []string{`<!--?`},
 		},
 		{
-			name:            "unexpected error when checking for container with state set",
+			name:            "unexpected error checking for container with state set",
 			err:             "got HTTP response code 424 with body",
 			managementState: "foo",
 			config: &imageregistryv1.Config{
