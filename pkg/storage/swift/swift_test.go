@@ -213,7 +213,9 @@ func fakeInfrastructureLister(cloudName string) configlisters.InfrastructureList
 	return configlisters.NewInfrastructureLister(fakeIndexer)
 }
 
-func mockConfig(includeStatus bool, endpoint string, secretLister MockSecretNamespaceLister) (driver, imageregistryv1.Config) {
+func mockConfig(
+	includeStatus bool, endpoint string, secretLister MockSecretNamespaceLister, storageManaged bool,
+) (driver, imageregistryv1.Config) {
 	config := imageregistryv1.ImageRegistryConfigStorageSwift{
 		AuthURL:   endpoint,
 		Container: container,
@@ -237,13 +239,15 @@ func mockConfig(includeStatus bool, endpoint string, secretLister MockSecretName
 			},
 		},
 	}
+	if storageManaged {
+		ic.Spec.StorageManagementState = imageregistryv1.StorageManagementStateManaged
+	}
 
 	if includeStatus {
 		ic.Status = imageregistryv1.ImageRegistryStatus{
 			Storage: imageregistryv1.ImageRegistryConfigStorage{
 				Swift: &config,
 			},
-			StorageManaged: true,
 		}
 	}
 
@@ -278,12 +282,12 @@ func TestSwiftCreateStorageNativeSecret(t *testing.T) {
 		}
 	})
 
-	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, false)
 
 	err := d.CreateStorage(&installConfig)
 
 	th.AssertNoErr(t, err)
-	th.AssertEquals(t, true, installConfig.Status.StorageManaged)
+	th.AssertEquals(t, imageregistryv1.StorageManagementStateManaged, installConfig.Spec.StorageManagementState)
 	th.AssertEquals(t, "StorageExists", installConfig.Status.Conditions[0].Type)
 	th.AssertEquals(t, operatorapi.ConditionTrue, installConfig.Status.Conditions[0].Status)
 	th.AssertEquals(t, container, installConfig.Status.Storage.Swift.Container)
@@ -321,7 +325,7 @@ func TestSwiftRemoveStorageWithContent(t *testing.T) {
 		}
 	})
 
-	d, installConfig := mockConfig(true, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, installConfig := mockConfig(true, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, true)
 
 	_, err := d.RemoveStorage(&installConfig)
 
@@ -350,7 +354,7 @@ func TestSwiftRemoveStorageNativeSecret(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	d, installConfig := mockConfig(true, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, installConfig := mockConfig(true, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, true)
 
 	_, err := d.RemoveStorage(&installConfig)
 
@@ -381,7 +385,7 @@ func TestSwiftStorageExistsNativeSecret(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, false)
 
 	res, err := d.StorageExists(&installConfig)
 
@@ -486,12 +490,12 @@ func TestSwiftCreateStorageCloudConfig(t *testing.T) {
 		}
 	})
 
-	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockIPISecretNamespaceLister{})
+	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockIPISecretNamespaceLister{}, false)
 
 	err := d.CreateStorage(&installConfig)
 
 	th.AssertNoErr(t, err)
-	th.AssertEquals(t, true, installConfig.Status.StorageManaged)
+	th.AssertEquals(t, imageregistryv1.StorageManagementStateManaged, installConfig.Spec.StorageManagementState)
 	th.AssertEquals(t, "StorageExists", installConfig.Status.Conditions[0].Type)
 	th.AssertEquals(t, operatorapi.ConditionTrue, installConfig.Status.Conditions[0].Status)
 	th.AssertEquals(t, container, installConfig.Status.Storage.Swift.Container)
@@ -526,7 +530,7 @@ func TestSwiftRemoveStorageCloudConfig(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	d, installConfig := mockConfig(true, th.Endpoint()+"v3", MockIPISecretNamespaceLister{})
+	d, installConfig := mockConfig(true, th.Endpoint()+"v3", MockIPISecretNamespaceLister{}, true)
 
 	_, err := d.RemoveStorage(&installConfig)
 
@@ -571,7 +575,7 @@ func TestSwiftStorageExistsCloudConfig(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockIPISecretNamespaceLister{})
+	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockIPISecretNamespaceLister{}, false)
 
 	res, err := d.StorageExists(&installConfig)
 
@@ -594,7 +598,7 @@ func TestSwiftConfigEnvCloudConfig(t *testing.T) {
 		cloudSecretKey: fakeCloudsYAMLData,
 	}
 
-	d, _ := mockConfig(false, "http://localhost:5000/v3", MockIPISecretNamespaceLister{})
+	d, _ := mockConfig(false, "http://localhost:5000/v3", MockIPISecretNamespaceLister{}, false)
 
 	res, err := d.ConfigEnv()
 
@@ -705,7 +709,7 @@ func TestSwiftEndpointTypeObjectStore(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, installConfig := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, false)
 
 	res, err := d.StorageExists(&installConfig)
 
@@ -789,7 +793,7 @@ func TestSwiftIsNotAvailable(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	d, _ := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, _ := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, false)
 
 	_, err := d.getSwiftClient()
 	// if Swift endpoint is not registered, getSwiftClient should return *ErrEndpointNotFound
@@ -835,7 +839,7 @@ func TestNoPermissionsKeystone(t *testing.T) {
 		w.WriteHeader(http.StatusForbidden)
 	})
 
-	d, _ := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, _ := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, false)
 
 	conn, err := d.getSwiftClient()
 	th.AssertNoErr(t, err)
@@ -885,7 +889,7 @@ func TestNoPermissionsSwauth(t *testing.T) {
 		w.WriteHeader(http.StatusUnauthorized)
 	})
 
-	d, _ := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{})
+	d, _ := mockConfig(false, th.Endpoint()+"v3", MockUPISecretNamespaceLister{}, false)
 
 	conn, err := d.getSwiftClient()
 	th.AssertNoErr(t, err)
