@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/google/uuid"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -719,5 +720,111 @@ func TestAWSFinalizerDeleteS3Bucket(t *testing.T) {
 
 	if exists {
 		t.Errorf("s3 bucket should have been deleted, but it wasn't")
+	}
+}
+
+// Test if user is able to, after setting the storage managent to "Unmanaged", configure
+// a bucket that does not require encryption.
+func TestAWSDisableEncryption(t *testing.T) {
+	te := framework.Setup(t)
+	defer framework.TeardownImageRegistry(te)
+
+	kubeconfig, err := regopclient.GetConfig()
+	if err != nil {
+		t.Fatalf("unable to get kubeconfig: %s", err)
+	}
+
+	newMockLister, err := listers.NewMockLister(kubeconfig)
+	if err != nil {
+		t.Fatalf("unable to create mock lister: %v", err)
+	}
+
+	mockLister, err := newMockLister.GetListers()
+	if err != nil {
+		t.Fatalf("unable to get listers from mock lister: %v", err)
+	}
+
+	infra, err := util.GetInfrastructure(mockLister)
+	if err != nil {
+		t.Fatalf("unable to get install configuration: %v", err)
+	}
+
+	if infra.Status.PlatformStatus.Type != configapiv1.AWSPlatformType {
+		t.Skip("skipping on non-AWS platform")
+	}
+
+	framework.DeployImageRegistry(te, nil)
+	framework.WaitUntilImageRegistryIsAvailable(te)
+	framework.EnsureInternalRegistryHostnameIsSet(te)
+	framework.EnsureClusterOperatorStatusIsNormal(te)
+
+	cr, err := te.Client().Configs().Get(
+		context.Background(), defaults.ImageRegistryResourceName, metav1.GetOptions{},
+	)
+	if err != nil {
+		t.Fatalf("unable to get registry config: %v", err)
+	}
+
+	imageRegistryPrivateConfiguration, err := te.Client().Secrets(
+		defaults.ImageRegistryOperatorNamespace,
+	).Get(
+		context.Background(), defaults.ImageRegistryPrivateConfiguration, metav1.GetOptions{},
+	)
+	if err != nil {
+		t.Errorf("unable to get secret %s/%s: %#v", defaults.ImageRegistryOperatorNamespace, defaults.ImageRegistryPrivateConfiguration, err)
+	}
+	accessKey := imageRegistryPrivateConfiguration.Data["REGISTRY_STORAGE_S3_ACCESSKEY"]
+	secretKey := imageRegistryPrivateConfiguration.Data["REGISTRY_STORAGE_S3_SECRETKEY"]
+
+	sess, err := session.NewSession(&aws.Config{
+		Credentials: credentials.NewStaticCredentials(string(accessKey), string(secretKey), ""),
+		Region:      &cr.Spec.Storage.S3.Region,
+	})
+	if err != nil {
+		t.Errorf("unable to create new session with supplied AWS credentials")
+	}
+
+	bucketName := fmt.Sprintf("image-registry-test-%s", uuid.New().String())
+
+	svc := s3.New(sess)
+	if _, err := svc.CreateBucket(&s3.CreateBucketInput{Bucket: &bucketName}); err != nil {
+		t.Fatalf("unable to create bucket: %v", err)
+	}
+	defer func() {
+		if _, err := svc.DeleteBucket(&s3.DeleteBucketInput{
+			Bucket: &bucketName,
+		}); err != nil {
+			t.Errorf("error deleting temporary bucket: %v", err)
+		}
+	}()
+
+	updatedS3Config := &imageregistryapiv1.ImageRegistryConfigStorageS3{
+		Bucket:  bucketName,
+		Region:  cr.Spec.Storage.S3.Region,
+		Encrypt: false,
+	}
+
+	cr.Spec.Storage.ManagementState = imageregistryapiv1.StorageManagementStateUnmanaged
+	cr.Spec.Storage.S3 = updatedS3Config
+
+	if _, err := te.Client().Configs().Update(
+		context.Background(), cr, metav1.UpdateOptions{},
+	); err != nil {
+		t.Fatalf("error updating registry config: %v", err)
+	}
+	framework.WaitUntilImageRegistryIsAvailable(te)
+
+	if cr, err = te.Client().Configs().Get(
+		context.Background(), defaults.ImageRegistryResourceName, metav1.GetOptions{},
+	); err != nil {
+		t.Fatalf("unable to get registry config: %v", err)
+	}
+
+	if !reflect.DeepEqual(cr.Spec.Storage.S3, updatedS3Config) {
+		t.Errorf("spec differs, expected: %+v, received: %+v", updatedS3Config, cr.Spec.Storage.S3)
+	}
+
+	if !reflect.DeepEqual(cr.Status.Storage.S3, updatedS3Config) {
+		t.Errorf("spec differs, expected: %+v, received: %+v", updatedS3Config, cr.Spec.Storage.S3)
 	}
 }
