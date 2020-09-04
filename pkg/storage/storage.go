@@ -48,9 +48,11 @@ type Driver interface {
 	Volumes() ([]corev1.Volume, []corev1.VolumeMount, error)
 	VolumeSecrets() (map[string]string, error)
 	CreateStorage(*imageregistryv1.Config) error
-	StorageExists(*imageregistryv1.Config) (bool, error)
+	// XXX The new StorageOperator does not use this.
+	// StorageExists(*imageregistryv1.Config) (bool, error)
 	RemoveStorage(*imageregistryv1.Config) (bool, error)
-	StorageChanged(*imageregistryv1.Config) bool
+	// XXX The new StorageOperator does not use this.
+	// StorageChanged(*imageregistryv1.Config) bool
 	ID() string
 }
 

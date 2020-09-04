@@ -66,9 +66,10 @@ func (c *Controller) Bootstrap() error {
 
 	rolloutStrategy := appsapi.RollingUpdateDeploymentStrategyType
 	if platformStorage.PVC != nil {
-		if err = c.createPVC(corev1.ReadWriteOnce, platformStorage.PVC.Claim); err != nil {
-			return err
-		}
+		// XXX this should not be done here but on the PVC driver.
+		// if err = c.createPVC(corev1.ReadWriteOnce, platformStorage.PVC.Claim); err != nil {
+		//	return err
+		// }
 		rolloutStrategy = appsapi.RecreateDeploymentStrategyType
 	}
 
@@ -80,10 +81,13 @@ func (c *Controller) Bootstrap() error {
 		Spec: imageregistryv1.ImageRegistrySpec{
 			ManagementState: mgmtState,
 			LogLevel:        2,
-			Storage:         platformStorage,
 			Replicas:        replicas,
 			HTTPSecret:      fmt.Sprintf("%x", string(secretBytes[:])),
 			RolloutStrategy: string(rolloutStrategy),
+
+			// XXX this should be empty, storage bootstrap is now part
+			// of StorageOperator (storageoperator.go).
+			// Storage:         platformStorage,
 		},
 		Status: imageregistryv1.ImageRegistryStatus{},
 	}

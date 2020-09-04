@@ -21,7 +21,6 @@ import (
 
 	configapiv1 "github.com/openshift/api/config/v1"
 	imageregistryv1 "github.com/openshift/api/imageregistry/v1"
-	operatorapi "github.com/openshift/api/operator/v1"
 
 	regopclient "github.com/openshift/cluster-image-registry-operator/pkg/client"
 	"github.com/openshift/cluster-image-registry-operator/pkg/defaults"
@@ -290,39 +289,41 @@ func (d *driver) bucketExists(bucketName string) error {
 
 // StorageExists checks if an S3 bucket with the given name exists
 // and we can access it
-func (d *driver) StorageExists(cr *imageregistryv1.Config) (bool, error) {
-	if len(d.Config.Bucket) == 0 {
-		return false, nil
-	}
-
-	err := d.bucketExists(d.Config.Bucket)
-	if err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			switch aerr.Code() {
-			case s3.ErrCodeNoSuchBucket, "Forbidden", "NotFound":
-				util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
-				return false, nil
-			}
-		}
-		util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "Unknown Error Occurred", err.Error())
-		return false, err
-	}
-
-	util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, "S3 Bucket Exists", "")
-	return true, nil
-
-}
+// XXX StorageOperator does not need this anylonger.
+// func (d *driver) StorageExists(cr *imageregistryv1.Config) (bool, error) {
+//	if len(d.Config.Bucket) == 0 {
+//		return false, nil
+//	}
+//
+//	err := d.bucketExists(d.Config.Bucket)
+//	if err != nil {
+//		if aerr, ok := err.(awserr.Error); ok {
+//			switch aerr.Code() {
+//			case s3.ErrCodeNoSuchBucket, "Forbidden", "NotFound":
+//				util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+//				return false, nil
+//			}
+//		}
+//		util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "Unknown Error Occurred", err.Error())
+//		return false, err
+//	}
+//
+//	util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, "S3 Bucket Exists", "")
+//	return true, nil
+//
+// }
 
 // StorageChanged checks to see if the name of the storage medium
 // has changed
-func (d *driver) StorageChanged(cr *imageregistryv1.Config) bool {
-	if !reflect.DeepEqual(cr.Status.Storage.S3, cr.Spec.Storage.S3) {
-		util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "S3 Configuration Changed", "S3 storage is in an unknown state")
-		return true
-	}
-
-	return false
-}
+// XXX StorageOperator does not need this anylonger.
+// func (d *driver) StorageChanged(cr *imageregistryv1.Config) bool {
+//	if !reflect.DeepEqual(cr.Status.Storage.S3, cr.Spec.Storage.S3) {
+//		util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "S3 Configuration Changed", "S3 storage is in an unknown state")
+//		return true
+//	}
+//
+//	return false
+// }
 
 // CreateStorage attempts to create an s3 bucket
 // and apply any provided tags
@@ -347,13 +348,19 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 				switch aerr.Code() {
 				case s3.ErrCodeNoSuchBucket, "Forbidden", "NotFound":
 					// If the bucket doesn't exist that's ok, we'll try to create it
-					util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+					// XXX We should not be updating conditions in here anymore
+					// but return an error indicating the failure.
+					// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
 				default:
-					util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "Unknown Error Occurred", err.Error())
+					// XXX We should not be updating conditions in here anymore
+					// but return an error indicating the failure.
+					// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "Unknown Error Occurred", err.Error())
 					return err
 				}
 			} else {
-				util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "Unknown Error Occurred", err.Error())
+				// XXX We should not be updating conditions in here anymore
+				// but return an error indicating the failure.
+				// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, "Unknown Error Occurred", err.Error())
 				return err
 			}
 		} else {
@@ -369,7 +376,8 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 		cr.Status.Storage = imageregistryv1.ImageRegistryConfigStorage{
 			S3: d.Config.DeepCopy(),
 		}
-		util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, "S3 Bucket Exists", "User supplied S3 bucket exists and is accessible")
+		// XXX We should not be updating conditions in here anymore
+		// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, "S3 Bucket Exists", "User supplied S3 bucket exists and is accessible")
 
 	} else {
 		generatedName := false
@@ -392,13 +400,17 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 					switch aerr.Code() {
 					case s3.ErrCodeBucketAlreadyExists:
 						if d.Config.Bucket != "" && !generatedName {
-							util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "Unable to Access Bucket", "The bucket exists, but we do not have permission to access it")
+							// XXX We should not be updating conditions in here anymore
+							// but return an error indicating the failure.
+							// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "Unable to Access Bucket", "The bucket exists, but we do not have permission to access it")
 							break
 						}
 						d.Config.Bucket = ""
 						continue
 					default:
-						util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+						// XXX We should not be updating conditions in here anymore
+						// but return an error indicating the failure.
+						// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
 						return err
 					}
 				}
@@ -411,13 +423,17 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 			}
 			cr.Spec.Storage.S3 = d.Config.DeepCopy()
 
-			util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, "Creation Successful", "S3 bucket was successfully created")
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, "Creation Successful", "S3 bucket was successfully created")
 
 			break
 		}
 
 		if len(d.Config.Bucket) == 0 {
-			util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "Unable to Generate Unique Bucket Name", "")
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "Unable to Generate Unique Bucket Name", "")
 			return fmt.Errorf("unable to generate a unique s3 bucket name")
 		}
 	}
@@ -426,9 +442,11 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 	if err := svc.WaitUntilBucketExistsWithContext(d.Context, &s3.HeadBucketInput{
 		Bucket: aws.String(d.Config.Bucket),
 	}); err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
-		}
+		// XXX We should not be updating conditions in here anymore
+		// but return an error indicating the failure.
+		// if aerr, ok := err.(awserr.Error); ok {
+		//	util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+		// }
 
 		return err
 	}
@@ -446,13 +464,17 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 		})
 
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				util.UpdateCondition(cr, defaults.StoragePublicAccessBlocked, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
-			} else {
-				util.UpdateCondition(cr, defaults.StoragePublicAccessBlocked, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
-			}
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// if aerr, ok := err.(awserr.Error); ok {
+			//	util.UpdateCondition(cr, defaults.StoragePublicAccessBlocked, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+			// } else {
+			//	util.UpdateCondition(cr, defaults.StoragePublicAccessBlocked, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
+			// }
 		} else {
-			util.UpdateCondition(cr, defaults.StoragePublicAccessBlocked, operatorapi.ConditionTrue, "Public Access Block Successful", "Public access to the S3 bucket and its contents have been successfully blocked.")
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StoragePublicAccessBlocked, operatorapi.ConditionTrue, "Public Access Block Successful", "Public access to the S3 bucket and its contents have been successfully blocked.")
 			cr.Status.Storage = imageregistryv1.ImageRegistryConfigStorage{
 				S3: d.Config.DeepCopy(),
 			}
@@ -480,32 +502,39 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 			},
 		})
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				util.UpdateCondition(cr, defaults.StorageTagged, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
-			} else {
-				util.UpdateCondition(cr, defaults.StorageTagged, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
-			}
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// if aerr, ok := err.(awserr.Error); ok {
+			//	util.UpdateCondition(cr, defaults.StorageTagged, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+			// } else {
+			//	util.UpdateCondition(cr, defaults.StorageTagged, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
+			// }
 		} else {
-			util.UpdateCondition(cr, defaults.StorageTagged, operatorapi.ConditionTrue, "Tagging Successful", "Tags were successfully applied to the S3 bucket")
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StorageTagged, operatorapi.ConditionTrue, "Tagging Successful", "Tags were successfully applied to the S3 bucket")
 		}
 	}
 
 	// Enable default encryption on the bucket
 	if cr.Spec.Storage.ManagementState == imageregistryv1.StorageManagementStateManaged {
 		var encryption *s3.ServerSideEncryptionByDefault
-		var encryptionType string
+		// XXX not needed anymore as we don't generate conditions.
+		// var encryptionType string
 
 		if len(d.Config.KeyID) != 0 {
 			encryption = &s3.ServerSideEncryptionByDefault{
 				SSEAlgorithm:   aws.String(s3.ServerSideEncryptionAwsKms),
 				KMSMasterKeyID: aws.String(d.Config.KeyID),
 			}
-			encryptionType = s3.ServerSideEncryptionAwsKms
+			// XXX not needed anymore as we don't generate conditions.
+			// encryptionType = s3.ServerSideEncryptionAwsKms
 		} else {
 			encryption = &s3.ServerSideEncryptionByDefault{
 				SSEAlgorithm: aws.String(s3.ServerSideEncryptionAes256),
 			}
-			encryptionType = s3.ServerSideEncryptionAes256
+			// XXX not needed anymore as we don't generate conditions.
+			//encryptionType = s3.ServerSideEncryptionAes256
 		}
 
 		_, err = svc.PutBucketEncryptionWithContext(d.Context, &s3.PutBucketEncryptionInput{
@@ -519,13 +548,17 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 			},
 		})
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				util.UpdateCondition(cr, defaults.StorageEncrypted, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
-			} else {
-				util.UpdateCondition(cr, defaults.StorageEncrypted, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
-			}
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// if aerr, ok := err.(awserr.Error); ok {
+			//	util.UpdateCondition(cr, defaults.StorageEncrypted, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+			// } else {
+			//	util.UpdateCondition(cr, defaults.StorageEncrypted, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
+			// }
 		} else {
-			util.UpdateCondition(cr, defaults.StorageEncrypted, operatorapi.ConditionTrue, "Encryption Successful", fmt.Sprintf("Default %s encryption was successfully enabled on the S3 bucket", encryptionType))
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StorageEncrypted, operatorapi.ConditionTrue, "Encryption Successful", fmt.Sprintf("Default %s encryption was successfully enabled on the S3 bucket", encryptionType))
 			d.Config.Encrypt = true
 			cr.Status.Storage = imageregistryv1.ImageRegistryConfigStorage{
 				S3: d.Config.DeepCopy(),
@@ -560,13 +593,17 @@ func (d *driver) CreateStorage(cr *imageregistryv1.Config) error {
 			},
 		})
 		if err != nil {
-			if aerr, ok := err.(awserr.Error); ok {
-				util.UpdateCondition(cr, defaults.StorageIncompleteUploadCleanupEnabled, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
-			} else {
-				util.UpdateCondition(cr, defaults.StorageIncompleteUploadCleanupEnabled, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
-			}
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// if aerr, ok := err.(awserr.Error); ok {
+			//	util.UpdateCondition(cr, defaults.StorageIncompleteUploadCleanupEnabled, operatorapi.ConditionFalse, aerr.Code(), aerr.Error())
+			// } else {
+			//	util.UpdateCondition(cr, defaults.StorageIncompleteUploadCleanupEnabled, operatorapi.ConditionFalse, "Unknown Error Occurred", err.Error())
+			// }
 		} else {
-			util.UpdateCondition(cr, defaults.StorageIncompleteUploadCleanupEnabled, operatorapi.ConditionTrue, "Enable Cleanup Successful", "Default cleanup of incomplete multipart uploads after one (1) day was successfully enabled")
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StorageIncompleteUploadCleanupEnabled, operatorapi.ConditionTrue, "Enable Cleanup Successful", "Default cleanup of incomplete multipart uploads after one (1) day was successfully enabled")
 		}
 	}
 
@@ -602,10 +639,14 @@ func (d *driver) RemoveStorage(cr *imageregistryv1.Config) (bool, error) {
 	if err != nil {
 		if aerr, ok := err.(awserr.Error); ok {
 			if aerr.Code() == s3.ErrCodeNoSuchBucket {
-				util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "S3 Bucket Deleted", "The S3 bucket did not exist.")
+				// XXX We should not be updating conditions in here anymore
+				// but return an error indicating the failure.
+				// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "S3 Bucket Deleted", "The S3 bucket did not exist.")
 				return false, nil
 			}
-			util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, aerr.Code(), aerr.Error())
+			// XXX We should not be updating conditions in here anymore
+			// but return an error indicating the failure.
+			// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionUnknown, aerr.Code(), aerr.Error())
 			return false, err
 		}
 		return true, err
@@ -615,9 +656,11 @@ func (d *driver) RemoveStorage(cr *imageregistryv1.Config) (bool, error) {
 	if err := svc.WaitUntilBucketNotExistsWithContext(d.Context, &s3.HeadBucketInput{
 		Bucket: aws.String(d.Config.Bucket),
 	}); err != nil {
-		if aerr, ok := err.(awserr.Error); ok {
-			util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, aerr.Code(), aerr.Error())
-		}
+		// XXX We should not be updating conditions in here anymore
+		// but return an error indicating the failure.
+		// if aerr, ok := err.(awserr.Error); ok {
+		//	util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionTrue, aerr.Code(), aerr.Error())
+		// }
 
 		return false, err
 	}
@@ -634,7 +677,9 @@ func (d *driver) RemoveStorage(cr *imageregistryv1.Config) (bool, error) {
 		}
 	}
 
-	util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "S3 Bucket Deleted", "The S3 bucket has been removed.")
+	// XXX We should not be updating conditions in here anymore
+	// but return an error indicating the failure.
+	// util.UpdateCondition(cr, defaults.StorageExists, operatorapi.ConditionFalse, "S3 Bucket Deleted", "The S3 bucket has been removed.")
 
 	return false, nil
 }

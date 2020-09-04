@@ -95,6 +95,14 @@ func RunOperator(ctx context.Context, kubeconfig *restclient.Config) error {
 		kubeInformersForOpenShiftConfig.Core().V1().ConfigMaps(),
 	)
 
+	/*
+		storageController := NewStorageController(
+			imageregistryInformers.Imageregistry().V1().Configs(),
+			nil,
+			client.Listers,
+		)
+	*/
+
 	nodeCADaemonController := NewNodeCADaemonController(
 		kubeClient.AppsV1(),
 		configOperatorClient,

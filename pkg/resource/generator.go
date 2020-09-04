@@ -3,13 +3,10 @@ package resource
 import (
 	"context"
 	"fmt"
-	"reflect"
-	"time"
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metaapi "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/util/retry"
 	"k8s.io/klog"
@@ -18,7 +15,6 @@ import (
 
 	"github.com/openshift/cluster-image-registry-operator/pkg/client"
 	"github.com/openshift/cluster-image-registry-operator/pkg/defaults"
-	"github.com/openshift/cluster-image-registry-operator/pkg/metrics"
 	"github.com/openshift/cluster-image-registry-operator/pkg/resource/object"
 	"github.com/openshift/cluster-image-registry-operator/pkg/storage"
 )
@@ -116,68 +112,70 @@ func (g *Generator) List(cr *imageregistryv1.Config) ([]Mutator, error) {
 // 2.)  to see if the storage medium name changed and we need to:
 //      a.) check to make sure that we can access the storage or
 //      b.) see if we need to try to create the new storage
-func (g *Generator) syncStorage(cr *imageregistryv1.Config) error {
-	var runCreate bool
-	// Create a driver with the current configuration
-	driver, err := storage.NewDriver(&cr.Spec.Storage, g.kubeconfig, g.listers)
-	if err == storage.ErrStorageNotConfigured {
-		cr.Spec.Storage, _, err = storage.GetPlatformStorage(g.listers)
-		if err != nil {
-			return fmt.Errorf("unable to get storage configuration from cluster install config: %s", err)
-		}
-		driver, err = storage.NewDriver(&cr.Spec.Storage, g.kubeconfig, g.listers)
-	}
-	if err != nil {
-		return err
-	}
-
-	if driver.StorageChanged(cr) {
-		runCreate = true
-	} else {
-		exists, err := driver.StorageExists(cr)
-		if err != nil {
-			return err
-		}
-		if !exists {
-			runCreate = true
-		}
-	}
-
-	if runCreate {
-		reconf := g.storageReconfigured(cr, g.kubeconfig, g.listers)
-		if err := driver.CreateStorage(cr); err != nil {
-			return err
-		}
-		if reconf {
-			metrics.StorageReconfigured()
-		}
-	}
-
-	return nil
-}
+// XXX Storage operations have been delegated to StorageOperator (storageoperator.go)
+// func (g *Generator) syncStorage(cr *imageregistryv1.Config) error {
+//	var runCreate bool
+//	// Create a driver with the current configuration
+//	driver, err := storage.NewDriver(&cr.Spec.Storage, g.kubeconfig, g.listers)
+//	if err == storage.ErrStorageNotConfigured {
+//		cr.Spec.Storage, _, err = storage.GetPlatformStorage(g.listers)
+//		if err != nil {
+//			return fmt.Errorf("unable to get storage configuration from cluster install config: %s", err)
+//		}
+//		driver, err = storage.NewDriver(&cr.Spec.Storage, g.kubeconfig, g.listers)
+//	}
+//	if err != nil {
+//		return err
+//	}
+//
+//	if driver.StorageChanged(cr) {
+//		runCreate = true
+//	} else {
+//		exists, err := driver.StorageExists(cr)
+//		if err != nil {
+//			return err
+//		}
+//		if !exists {
+//			runCreate = true
+//		}
+//	}
+//
+//	if runCreate {
+//		reconf := g.storageReconfigured(cr, g.kubeconfig, g.listers)
+//		if err := driver.CreateStorage(cr); err != nil {
+//			return err
+//		}
+//		if reconf {
+//			metrics.StorageReconfigured()
+//		}
+//	}
+//
+//	return nil
+// }
 
 // storageReconfigured returns true if we are, based on the provided config,
 // starting to use a different underlying storage location.
-func (g *Generator) storageReconfigured(
-	regCfg *imageregistryv1.Config,
-	restCfg *rest.Config,
-	listers *client.Listers,
-) bool {
-	prev, err := storage.NewDriver(&regCfg.Status.Storage, restCfg, listers)
-	if err != nil {
-		return false
-	}
-	cur, err := storage.NewDriver(&regCfg.Spec.Storage, restCfg, listers)
-	if err != nil {
-		return false
-	}
-
-	if reflect.TypeOf(prev) != reflect.TypeOf(cur) {
-		return true
-	}
-
-	return prev.ID() != cur.ID()
-}
+// XXX Storage operations have been delegated to StorageOperator (storageoperator.go)
+// func (g *Generator) storageReconfigured(
+//	regCfg *imageregistryv1.Config,
+//	restCfg *rest.Config,
+//	listers *client.Listers,
+// ) bool {
+//	prev, err := storage.NewDriver(&regCfg.Status.Storage, restCfg, listers)
+//	if err != nil {
+//		return false
+//	}
+//	cur, err := storage.NewDriver(&regCfg.Spec.Storage, restCfg, listers)
+//	if err != nil {
+//		return false
+//	}
+//
+//	if reflect.TypeOf(prev) != reflect.TypeOf(cur) {
+//		return true
+//	}
+//
+//	return prev.ID() != cur.ID()
+// }
 
 func (g *Generator) removeObsoleteRoutes(cr *imageregistryv1.Config) error {
 	routes, err := g.listers.Routes.List(labels.Everything())
@@ -215,12 +213,13 @@ func (g *Generator) removeObsoleteRoutes(cr *imageregistryv1.Config) error {
 }
 
 func (g *Generator) Apply(cr *imageregistryv1.Config) error {
-	err := g.syncStorage(cr)
-	if err == storage.ErrStorageNotConfigured {
-		return err
-	} else if err != nil {
-		return fmt.Errorf("unable to sync storage configuration: %s", err)
-	}
+	// XXX Storage operations have been delegated to StorageOperator (storageoperator.go)
+	// err := g.syncStorage(cr)
+	// if err == storage.ErrStorageNotConfigured {
+	//	return err
+	// } else if err != nil {
+	//	return fmt.Errorf("unable to sync storage configuration: %s", err)
+	// }
 
 	// XXX https://bugzilla.redhat.com/show_bug.cgi?id=1833109
 	// Migrates the old Status.StorageChanged into the new customizable
@@ -228,15 +227,16 @@ func (g *Generator) Apply(cr *imageregistryv1.Config) error {
 	// During the loop we also attempt to update Status.StorageManaged
 	// to reflect the current Spec.Storage.ManagementState. This all
 	// should go away.
-	if cr.Spec.Storage.ManagementState == "" {
-		if cr.Status.StorageManaged {
-			cr.Spec.Storage.ManagementState = imageregistryv1.StorageManagementStateManaged
-		} else {
-			cr.Spec.Storage.ManagementState = imageregistryv1.StorageManagementStateUnmanaged
-		}
-	}
-	cr.Status.StorageManaged = cr.Spec.Storage.ManagementState == imageregistryv1.StorageManagementStateManaged
-	cr.Status.Storage.ManagementState = cr.Spec.Storage.ManagementState
+	// XXX Storage operations have been delegated to StorageOperator (storageoperator.go)
+	// if cr.Spec.Storage.ManagementState == "" {
+	//	if cr.Status.StorageManaged {
+	//		cr.Spec.Storage.ManagementState = imageregistryv1.StorageManagementStateManaged
+	//	} else {
+	//		cr.Spec.Storage.ManagementState = imageregistryv1.StorageManagementStateUnmanaged
+	//	}
+	// }
+	// cr.Status.StorageManaged = cr.Spec.Storage.ManagementState == imageregistryv1.StorageManagementStateManaged
+	// cr.Status.Storage.ManagementState = cr.Spec.Storage.ManagementState
 
 	generators, err := g.List(cr)
 	if err != nil {
@@ -283,30 +283,31 @@ func (g *Generator) Remove(cr *imageregistryv1.Config) error {
 		klog.Infof("object %s deleted", Name(gen))
 	}
 
-	driver, err := storage.NewDriver(&cr.Status.Storage, g.kubeconfig, g.listers)
-	if err == storage.ErrStorageNotConfigured {
-		return nil
-	} else if err != nil {
-		return err
-	}
-
-	var derr error
-	var retriable bool
-	err = wait.PollImmediate(1*time.Second, 5*time.Minute, func() (stop bool, err error) {
-		if retriable, derr = driver.RemoveStorage(cr); derr != nil {
-			if retriable {
-				return false, nil
-			} else {
-				return true, derr
-			}
-		}
-		return true, nil
-	})
-	if err != nil {
-		return fmt.Errorf("unable to remove storage: %s, %s", err, derr)
-	}
-
-	cr.Status.Storage = imageregistryv1.ImageRegistryConfigStorage{}
+	// XXX Storage deletion has been delegated to StorageOperator (storageoperator.go)
+	// driver, err := storage.NewDriver(&cr.Status.Storage, g.kubeconfig, g.listers)
+	// if err == storage.ErrStorageNotConfigured {
+	//	return nil
+	// } else if err != nil {
+	//	return err
+	// }
+	//
+	// var derr error
+	// var retriable bool
+	// err = wait.PollImmediate(1*time.Second, 5*time.Minute, func() (stop bool, err error) {
+	//	if retriable, derr = driver.RemoveStorage(cr); derr != nil {
+	//		if retriable {
+	//			return false, nil
+	//		} else {
+	//			return true, derr
+	//		}
+	//	}
+	//	return true, nil
+	// })
+	// if err != nil {
+	//	return fmt.Errorf("unable to remove storage: %s, %s", err, derr)
+	// }
+	//
+	// cr.Status.Storage = imageregistryv1.ImageRegistryConfigStorage{}
 
 	return nil
 }
