@@ -618,16 +618,18 @@ func TestConvertTLSVersion(t *testing.T) {
 
 func TestGenerateTLSEnvVars(t *testing.T) {
 	tests := []struct {
-		name     string
-		config   *v1.Config
-		expected []corev1.EnvVar
+		name        string
+		config      *v1.Config
+		expected    []corev1.EnvVar
+		expectError bool
 	}{
 		{
 			name: "empty observedConfig",
 			config: &v1.Config{
 				Spec: v1.ImageRegistrySpec{},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: false,
 		},
 		{
 			name: "observedConfig with no Raw data",
@@ -638,7 +640,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: false,
 		},
 		{
 			name: "valid minTLSVersion only",
@@ -654,6 +657,7 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 			expected: []corev1.EnvVar{
 				{Name: "REGISTRY_HTTP_TLS_MINIMUMTLS", Value: "tls1.2"},
 			},
+			expectError: false,
 		},
 		{
 			name: "valid cipherSuites only",
@@ -670,6 +674,7 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 				{Name: "REGISTRY_HTTP_TLS_CIPHERSUITES_0", Value: "TLS_AES_128_GCM_SHA256"},
 				{Name: "REGISTRY_HTTP_TLS_CIPHERSUITES_1", Value: "TLS_AES_256_GCM_SHA384"},
 			},
+			expectError: false,
 		},
 		{
 			name: "both minTLSVersion and cipherSuites",
@@ -686,6 +691,7 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 				{Name: "REGISTRY_HTTP_TLS_MINIMUMTLS", Value: "tls1.3"},
 				{Name: "REGISTRY_HTTP_TLS_CIPHERSUITES_0", Value: "TLS_AES_128_GCM_SHA256"},
 			},
+			expectError: false,
 		},
 		{
 			name: "unknown TLS version",
@@ -698,7 +704,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: false,
 		},
 		{
 			name: "empty TLS version string",
@@ -711,7 +718,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: false,
 		},
 		{
 			name: "empty cipherSuites array",
@@ -724,7 +732,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: false,
 		},
 		{
 			name: "missing servingInfo",
@@ -737,7 +746,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: false,
 		},
 		{
 			name: "invalid JSON",
@@ -750,13 +760,26 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected: nil,
+			expected:    nil,
+			expectError: true,
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			result := generateTLSEnvVars(tc.config)
+			result, err := generateTLSEnvVars(tc.config)
+			if tc.expectError {
+				if err == nil {
+					t.Errorf("expected error but got none")
+				}
+				return
+			}
+
+			if err != nil {
+				t.Errorf("unexpected error: %v", err)
+				return
+			}
+
 			if !reflect.DeepEqual(result, tc.expected) {
 				t.Errorf("expected %#v, got %#v", tc.expected, result)
 			}
