@@ -563,73 +563,20 @@ func TestMakePodTemplateSpecS3CloudFront(t *testing.T) {
 	}
 }
 
-func TestConvertTLSVersion(t *testing.T) {
+func Test_generateTLSEnvVars(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    string
-		expected string
-	}{
-		{
-			name:     "TLS 1.0",
-			input:    string(configv1.VersionTLS10),
-			expected: "tls1.0",
-		},
-		{
-			name:     "TLS 1.1",
-			input:    string(configv1.VersionTLS11),
-			expected: "tls1.1",
-		},
-		{
-			name:     "TLS 1.2",
-			input:    string(configv1.VersionTLS12),
-			expected: "tls1.2",
-		},
-		{
-			name:     "TLS 1.3",
-			input:    string(configv1.VersionTLS13),
-			expected: "tls1.3",
-		},
-		{
-			name:     "unknown version",
-			input:    "VersionTLS99",
-			expected: "",
-		},
-		{
-			name:     "empty string",
-			input:    "",
-			expected: "",
-		},
-		{
-			name:     "invalid format",
-			input:    "tls1.2",
-			expected: "",
-		},
-	}
-
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			result := convertTLSVersion(tc.input)
-			if result != tc.expected {
-				t.Errorf("expected %q, got %q", tc.expected, result)
-			}
-		})
-	}
-}
-
-func TestGenerateTLSEnvVars(t *testing.T) {
-	tests := []struct {
-		name        string
-		config      *v1.Config
-		expected    []corev1.EnvVar
-		expectError bool
+		name          string
+		config        *v1.Config
+		expected      []corev1.EnvVar
+		expectedError string
 	}{
 		{
 			name: "empty observedConfig",
 			config: &v1.Config{
 				Spec: v1.ImageRegistrySpec{},
 			},
-			expected:    nil,
-			expectError: false,
+			expected:      nil,
+			expectedError: "",
 		},
 		{
 			name: "observedConfig with no Raw data",
@@ -640,8 +587,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected:    nil,
-			expectError: false,
+			expected:      nil,
+			expectedError: "",
 		},
 		{
 			name: "valid minTLSVersion only",
@@ -655,9 +602,9 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 				},
 			},
 			expected: []corev1.EnvVar{
-				{Name: "REGISTRY_HTTP_TLS_MINIMUMTLS", Value: "tls1.2"},
+				{Name: "REGISTRY_HTTP_TLS_MINVERSION", Value: "VersionTLS12"},
 			},
-			expectError: false,
+			expectedError: "",
 		},
 		{
 			name: "valid cipherSuites only",
@@ -671,10 +618,9 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 				},
 			},
 			expected: []corev1.EnvVar{
-				{Name: "REGISTRY_HTTP_TLS_CIPHERSUITES_0", Value: "TLS_AES_128_GCM_SHA256"},
-				{Name: "REGISTRY_HTTP_TLS_CIPHERSUITES_1", Value: "TLS_AES_256_GCM_SHA384"},
+				{Name: "OPENSHIFT_REGISTRY_HTTP_TLS_CIPHERSUITES", Value: "TLS_AES_128_GCM_SHA256,TLS_AES_256_GCM_SHA384"},
 			},
-			expectError: false,
+			expectedError: "",
 		},
 		{
 			name: "both minTLSVersion and cipherSuites",
@@ -688,10 +634,10 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 				},
 			},
 			expected: []corev1.EnvVar{
-				{Name: "REGISTRY_HTTP_TLS_MINIMUMTLS", Value: "tls1.3"},
-				{Name: "REGISTRY_HTTP_TLS_CIPHERSUITES_0", Value: "TLS_AES_128_GCM_SHA256"},
+				{Name: "REGISTRY_HTTP_TLS_MINVERSION", Value: "VersionTLS13"},
+				{Name: "OPENSHIFT_REGISTRY_HTTP_TLS_CIPHERSUITES", Value: "TLS_AES_128_GCM_SHA256"},
 			},
-			expectError: false,
+			expectedError: "",
 		},
 		{
 			name: "unknown TLS version",
@@ -704,8 +650,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected:    nil,
-			expectError: false,
+			expected:      nil,
+			expectedError: "unknown tls version",
 		},
 		{
 			name: "empty TLS version string",
@@ -718,8 +664,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected:    nil,
-			expectError: false,
+			expected:      nil,
+			expectedError: "",
 		},
 		{
 			name: "empty cipherSuites array",
@@ -732,8 +678,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected:    nil,
-			expectError: false,
+			expected:      nil,
+			expectedError: "",
 		},
 		{
 			name: "missing servingInfo",
@@ -746,8 +692,8 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected:    nil,
-			expectError: false,
+			expected:      nil,
+			expectedError: "",
 		},
 		{
 			name: "invalid JSON",
@@ -760,17 +706,37 @@ func TestGenerateTLSEnvVars(t *testing.T) {
 					},
 				},
 			},
-			expected:    nil,
-			expectError: true,
+			expected:      nil,
+			expectedError: "failed to unmarshal observedConfig",
+		},
+		{
+			name: "invalid cipherSuites type",
+			config: &v1.Config{
+				Spec: v1.ImageRegistrySpec{
+					OperatorSpec: operatorv1.OperatorSpec{
+						ObservedConfig: runtime.RawExtension{
+							Raw: []byte(`{"servingInfo":{"minTLSVersion":"VersionTLS13","cipherSuites":["invalid"]}}`),
+						},
+					},
+				},
+			},
+			expected:      nil,
+			expectedError: "unknown cipher name",
 		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			result, err := generateTLSEnvVars(tc.config)
-			if tc.expectError {
+
+			// Validate error
+			if tc.expectedError != "" {
 				if err == nil {
-					t.Errorf("expected error but got none")
+					t.Errorf("expected error containing %q but got none", tc.expectedError)
+					return
+				}
+				if !strings.Contains(err.Error(), tc.expectedError) {
+					t.Errorf("expected error containing %q, got %q", tc.expectedError, err.Error())
 				}
 				return
 			}

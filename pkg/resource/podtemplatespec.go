@@ -21,6 +21,7 @@ import (
 	v1 "github.com/openshift/api/imageregistry/v1"
 	operatorapiv1 "github.com/openshift/api/operator/v1"
 	configlisters "github.com/openshift/client-go/config/listers/config/v1"
+	"github.com/openshift/library-go/pkg/crypto"
 
 	"github.com/openshift/cluster-image-registry-operator/pkg/defaults"
 	"github.com/openshift/cluster-image-registry-operator/pkg/storage"
@@ -63,9 +64,15 @@ func generateTLSEnvVars(cr *v1.Config) ([]corev1.EnvVar, error) {
 		return nil, fmt.Errorf("failed to get servingInfo.minTLSVersion: %w", err)
 	}
 	if found && minTLSVersion != "" {
-		if v := convertTLSVersion(minTLSVersion); v != "" {
-			envVars = append(envVars, corev1.EnvVar{Name: "REGISTRY_HTTP_TLS_MINIMUMTLS", Value: v})
+		if _, err := crypto.TLSVersion(minTLSVersion); err != nil {
+			return nil, fmt.Errorf("invalid TLS version: %w", err)
 		}
+		envVars = append(
+			envVars, corev1.EnvVar{
+				Name:  "REGISTRY_HTTP_TLS_MINVERSION",
+				Value: minTLSVersion,
+			},
+		)
 	}
 
 	// extract cipherSuites from servingInfo.cipherSuites
@@ -73,36 +80,22 @@ func generateTLSEnvVars(cr *v1.Config) ([]corev1.EnvVar, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to get servingInfo.cipherSuites: %w", err)
 	}
+
 	if found && len(cipherSuites) > 0 {
-		// Set each cipher suite as an indexed environment variable
-		for i, cipher := range cipherSuites {
-			envVars = append(envVars, corev1.EnvVar{
-				Name:  fmt.Sprintf("REGISTRY_HTTP_TLS_CIPHERSUITES_%d", i),
-				Value: cipher,
-			})
+		for _, cs := range cipherSuites {
+			if _, err := crypto.CipherSuite(cs); err != nil {
+				return nil, fmt.Errorf("invalid cipher suite: %w", err)
+			}
 		}
+		envVars = append(
+			envVars, corev1.EnvVar{
+				Name:  "OPENSHIFT_REGISTRY_HTTP_TLS_CIPHERSUITES",
+				Value: strings.Join(cipherSuites, ","),
+			},
+		)
 	}
 
 	return envVars, nil
-}
-
-// convertTLSVersion converts OpenShift TLS version format to registry format
-// VersionTLS10 -> tls1.0, VersionTLS11 -> tls1.1, etc.
-func convertTLSVersion(openshiftVersion string) string {
-	tlsVersion := configapiv1.TLSProtocolVersion(openshiftVersion)
-
-	switch tlsVersion {
-	case configapiv1.VersionTLS10:
-		return "tls1.0"
-	case configapiv1.VersionTLS11:
-		return "tls1.1"
-	case configapiv1.VersionTLS12:
-		return "tls1.2"
-	case configapiv1.VersionTLS13:
-		return "tls1.3"
-	default:
-		return ""
-	}
 }
 
 // generateLivenessProbeConfig returns an HTTPS liveness probe for the image
