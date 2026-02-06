@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -43,6 +44,27 @@ func TestImageRegistryRemovedWithImages(t *testing.T) {
 		}
 	}()
 
+	// wait until the namespace has the authentication secret for running the build pod successfully
+	te.Logf("waiting for build \"builder-dockercfg\" secret to appear in ns %s", nsName)
+	err = wait.PollUntilContextTimeout(ctx, 5*time.Second, 5*time.Minute, true,
+		func(ctx context.Context) (bool, error) {
+			secrets, err := te.Client().Secrets(nsName).List(ctx, metav1.ListOptions{})
+			if err != nil {
+				return false, err
+			}
+			for _, secret := range secrets.Items {
+				if strings.HasPrefix(secret.Name, "builder-dockercfg") {
+					return true, nil
+				}
+			}
+			return false, nil
+		},
+	)
+	if err != nil {
+		te.Errorf("failed to wait for builder-dockercfg to appear in the build namespace: %v", err)
+	}
+
+	te.Logf("\"builder-dockercfg\" secret already in ns %s, starting test build", nsName)
 	if buildName, err := runTestBuild(ctx, te, nsName); err != nil {
 		te.Error(err)
 		dumpBuildInfo(ctx, te, nsName, buildName)
