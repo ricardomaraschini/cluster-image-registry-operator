@@ -7,40 +7,85 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	configv1 "github.com/openshift/api/config/v1"
+	"github.com/openshift/library-go/pkg/crypto"
 	"k8s.io/klog/v2"
 )
 
-var (
-	tlsCRT = "/etc/secrets/tls.crt"
-	tlsKey = "/etc/secrets/tls.key"
-)
+// Server represents a metrics server that exposes Prometheus metrics over
+// HTTPS with configurable TLS settings.
+type Server struct {
+	tlsCRT        string
+	tlsKey        string
+	minTLSVersion uint16
+	cipherSuites  []uint16
+	bindAddress   string
+	httpServer    *http.Server
+}
 
-// RunServer starts the metrics server.
-func RunServer(port int) {
-	if port <= 0 {
-		klog.Error("invalid port for metric server")
-		return
+// NewServer creates a new metrics server with the specified TLS certificates
+// and serving configuration. Returns an error if the TLS version or cipher
+// suites are invalid.
+func NewServer(crt, key string, servinfo configv1.HTTPServingInfo) (*Server, error) {
+	minTLSVersion, err := crypto.TLSVersion(servinfo.MinTLSVersion)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse min tls version: %w", err)
 	}
 
+	var suites []uint16
+	for _, suite := range servinfo.CipherSuites {
+		tmp, err := crypto.CipherSuite(suite)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse suite: %w", err)
+		}
+		suites = append(suites, tmp)
+	}
+
+	return &Server{
+		tlsCRT:        crt,
+		tlsKey:        key,
+		minTLSVersion: minTLSVersion,
+		cipherSuites:  suites,
+		bindAddress:   servinfo.BindAddress,
+	}, nil
+}
+
+// Run starts the metrics server in a background goroutine. The server
+// listens on the configured bind address and serves Prometheus metrics
+// at the /metrics endpoint over HTTPS.
+func (s *Server) Run() {
 	handler := promhttp.HandlerFor(
-		registry,
-		promhttp.HandlerOpts{
+		registry, promhttp.HandlerOpts{
 			ErrorHandling: promhttp.HTTPErrorOnError,
 		},
 	)
 
-	bindAddr := fmt.Sprintf(":%d", port)
 	router := http.NewServeMux()
 	router.Handle("/metrics", handler)
-	srv := &http.Server{
-		Addr:         bindAddr,
+	s.httpServer = &http.Server{
+		Addr:         s.bindAddress,
 		Handler:      router,
+		TLSConfig:    &tls.Config{MinVersion: s.minTLSVersion, CipherSuites: s.cipherSuites},
 		TLSNextProto: map[string]func(*http.Server, *tls.Conn, http.Handler){}, // disable HTTP/2
 	}
 
-	if err := srv.ListenAndServeTLS(tlsCRT, tlsKey); err != nil {
-		klog.Errorf("error starting metrics server: %v", err)
+	go func() {
+		if err := s.httpServer.ListenAndServeTLS(s.tlsCRT, s.tlsKey); err != nil {
+			if err != http.ErrServerClosed {
+				klog.Errorf("error starting metrics server: %v", err)
+			}
+		}
+	}()
+}
+
+// Stop immediately shuts down the metrics server. It is safe to call Stop on a
+// server that has not been started. Returns an error if the server fails to
+// close.
+func (s *Server) Stop() error {
+	if s.httpServer == nil {
+		return nil
 	}
+	return s.httpServer.Close()
 }
 
 // StorageReconfigured keeps track of the number of times the operator got its
