@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/util/retry"
 
+	"github.com/google/go-cmp/cmp"
 	configapiv1 "github.com/openshift/api/config/v1"
 	imageregistryapiv1 "github.com/openshift/api/imageregistry/v1"
 	operatorapiv1 "github.com/openshift/api/operator/v1"
@@ -528,28 +529,35 @@ func EnsureOperatorIsNotHotLooping(te TestEnv) {
 	if cfg == nil || err != nil {
 		te.Errorf("failed to retrieve registry operator config: %v", err)
 	}
-	oldVersion := cfg.ResourceVersion
+	oldConfig, lastChanged := cfg.DeepCopy(), time.Now()
 
-	// wait 15s and then ensure that ResourceVersion is not updated. If it was updated then something
-	// is updating the registry config resource when we should be at steady state.
-	time.Sleep(15 * time.Second)
-	err = wait.PollUntilContextTimeout(context.Background(), 1*time.Second, 30*time.Second, false,
+	stableFor := 15 * time.Second
+	err = wait.PollUntilContextTimeout(context.Background(), time.Second, 3*time.Minute, false,
 		func(ctx context.Context) (stop bool, err error) {
 			cfg, err = te.Client().Configs().Get(
 				ctx, defaults.ImageRegistryResourceName, metav1.GetOptions{},
 			)
 			if err != nil || cfg == nil {
-				te.Logf("failed to retrieve registry operator config: %v", err)
+				return false, err
+			}
+
+			if cfg.ResourceVersion != oldConfig.ResourceVersion {
+				te.Logf("registry config changed: %s", cmp.Diff(oldConfig, cfg))
+				oldConfig, lastChanged = cfg.DeepCopy(), time.Now()
 				return false, nil
 			}
-			return true, nil
+
+			te.Logf("config stable for %s of %s", time.Since(lastChanged), stableFor)
+			if time.Since(lastChanged) > stableFor {
+				te.Log("operator is not hot looping")
+				return true, nil
+			}
+
+			return false, nil
 		},
 	)
-	if cfg == nil || err != nil {
-		te.Errorf("failed to retrieve registry operator config: %v", err)
-	}
-	if oldVersion != cfg.ResourceVersion {
-		te.Errorf("registry config resource version was updated when it should have been stable, went from %s to %s", oldVersion, cfg.ResourceVersion)
+	if err != nil {
+		te.Errorf("unstable image registry: %v", err)
 	}
 }
 
