@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"runtime"
@@ -14,7 +15,9 @@ import (
 	"k8s.io/utils/clock"
 
 	configv1 "github.com/openshift/api/config/v1"
+	operatorv1alpha1 "github.com/openshift/api/operator/v1alpha1"
 	"github.com/openshift/library-go/pkg/controller/controllercmd"
+	kubeyaml "k8s.io/apimachinery/pkg/util/yaml"
 
 	"github.com/openshift/cluster-image-registry-operator/pkg/defaults"
 	"github.com/openshift/cluster-image-registry-operator/pkg/metrics"
@@ -23,17 +26,44 @@ import (
 	"github.com/openshift/cluster-image-registry-operator/pkg/version"
 )
 
-const metricsPort = 60000
-
 var (
-	kubeconfig   string
-	filesToWatch []string
+	controllerConfig string
+	kubeconfig       string
+	filesToWatch     []string
 )
 
 func printVersion() {
 	klog.Infof("Cluster Image Registry Operator Version: %s", version.Version)
 	klog.Infof("Go Version: %s", runtime.Version())
 	klog.Infof("Go OS/Arch: %s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
+// readAndParseControllerConfig reads the controller configuration file and
+// parses it into a GenericOperatorConfig. XXX If the provided path is empty
+// then it returns a default GenericOperatorConfig, this is needed to make
+// the introduction of the config file requirement possible.
+func readAndParseControllerConfig(path string) (*operatorv1alpha1.GenericOperatorConfig, error) {
+	if path == "" {
+		return &operatorv1alpha1.GenericOperatorConfig{
+			ServingInfo: configv1.HTTPServingInfo{
+				ServingInfo: configv1.ServingInfo{
+					BindAddress: "0.0.0.0:60000",
+				},
+			},
+		}, nil
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+
+	config := &operatorv1alpha1.GenericOperatorConfig{}
+	if err := kubeyaml.Unmarshal(content, &config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config content: %w", err)
+	}
+
+	return config, nil
 }
 
 func main() {
@@ -64,8 +94,23 @@ func main() {
 				"image-registry-operator",
 				func(ctx context.Context, cctx *controllercmd.ControllerContext) error {
 					printVersion()
+					config, err := readAndParseControllerConfig(controllerConfig)
+					if err != nil {
+						return fmt.Errorf("failed to read config: %w", err)
+					}
+
 					klog.Infof("Watching files %v...", filesToWatch)
-					go metrics.RunServer(metricsPort)
+
+					metricsServer, err := metrics.NewServer(
+						"/etc/secrets/tls.crt",
+						"/etc/secrets/tls.key",
+						config.ServingInfo,
+					)
+					if err != nil {
+						return fmt.Errorf("failed to create metrics server: %w", err)
+					}
+					metricsServer.Run()
+
 					return operator.RunOperator(ctx, cctx.KubeConfig)
 				},
 				clock.RealClock{},
@@ -87,6 +132,7 @@ func main() {
 
 	cmd.Flags().StringVar(&kubeconfig, "kubeconfig", "", "Path to a kubeconfig. Only required if out-of-cluster")
 	cmd.Flags().StringArrayVar(&filesToWatch, "files", []string{}, "List of files to watch")
+	cmd.Flags().StringVar(&controllerConfig, "config", "", "Path to the controller config file")
 
 	if err := cmd.Execute(); err != nil {
 		klog.Errorf("%v", err)
