@@ -2,6 +2,7 @@ package operator
 
 import (
 	"context"
+	"encoding/json"
 	"strconv"
 	"testing"
 	"time"
@@ -64,6 +65,17 @@ func registryConfigResourceVersionBumper(t *testing.T, regcli *imageregistryfake
 	return func(action clientgotesting.Action) (bool, runtime.Object, error) {
 		update := action.(clientgotesting.UpdateAction)
 		newcfg := update.GetObject().(*imageregistryv1.Config).DeepCopy()
+
+		// Simulate real API server behavior: marshal/unmarshal to convert
+		// RawExtension.Object to RawExtension.Raw
+		data, err := json.Marshal(newcfg)
+		if err != nil {
+			t.Fatalf("failed to marshal config: %v", err)
+		}
+		newcfg = &imageregistryv1.Config{}
+		if err := json.Unmarshal(data, newcfg); err != nil {
+			t.Fatalf("failed to unmarshal config: %v", err)
+		}
 
 		gvr := schema.GroupVersionResource{
 			Group:    "imageregistry.operator.openshift.io",
